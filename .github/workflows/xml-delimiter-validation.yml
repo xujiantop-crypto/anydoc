@@ -1,0 +1,36 @@
+name: XML delimiter regression validation
+on:
+  push:
+    branches: [test/xml-delimiter-validation]
+permissions:
+  contents: read
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Baseline regression must fail
+        shell: bash
+        run: |
+          cp src/package/xml.rs /tmp/xml-fixed.rs
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/package/xml.rs')
+          p.write_text(p.read_text().replace('                check_start_delimiters(&e)?;\n', ''))
+          PY
+          if cargo test --locked bare_less_than -- --nocapture > /tmp/baseline.log 2>&1; then
+            cat /tmp/baseline.log
+            echo 'Expected baseline regression failure'
+            exit 1
+          fi
+          cat /tmp/baseline.log
+          grep -F 'test result: FAILED' /tmp/baseline.log
+          grep -F 'bare_less_than_returns_an_error_instead_of_truncated_markdown ... FAILED' /tmp/baseline.log
+          grep -F 'bare_less_than_in_text_is_not_silently_recovered ... FAILED' /tmp/baseline.log
+          cp /tmp/xml-fixed.rs src/package/xml.rs
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - run: cargo test --locked
